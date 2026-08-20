@@ -1,0 +1,45 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "model-compression-bench"
+version = "0.1.0"
+description = "Reproducible ONNX Runtime and TensorRT model benchmarks"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = []
+
+[project.optional-dependencies]
+storage = [
+  "boto3==1.43.55",
+]
+export = [
+  "numpy==2.5.1",
+  "onnx==1.22.0",
+  "onnxruntime==1.27.0",
+  "onnxscript==0.7.1",
+  "torch==2.13.0",
+  "transformers==4.57.1",
+]
+cpu = [
+  "numpy==2.5.1",
+  "onnxruntime==1.27.0",
+]
+dev = [
+  "numpy==2.5.1",
+  "ruff==0.16.0",
+]
+
+[project.scripts]
+model-bench = "model_bench.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.ruff]
+line-length = 88
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["B", "E", "F", "I", "UP"]

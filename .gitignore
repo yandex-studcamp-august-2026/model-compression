@@ -1,0 +1,15 @@
+__pycache__/
+*.py[cod]
+.DS_Store
+.venv/
+.ruff_cache/
+*.egg-info/
+build/
+dist/
+results/
+bundles/
+*.onnx
+*.plan
+*.pt
+*.pth
+*.ckpt

@@ -1,0 +1,7 @@
+{
+  "uri": "s3://datasets-studcamp/<dataset-root>",
+  "include": [
+    "<validation-input-prefix>",
+    "<validation-target-prefix>"
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "experiment_name": "replace_with_directory_name",
+  "author": "replace_with_author",
+  "hypothesis": "replace_with_tested_hypothesis",
+  "task": "segmentation",
+  "recipe": "replace_with_recipe",
+  "metrics": {
+    "mIoU": 0.0
+  },
+  "baseline_metrics": {
+    "mIoU": 0.0
+  }
+}
