@@ -43,6 +43,15 @@ class WorkflowContractTest(unittest.TestCase):
             if "uv run" in line:
                 self.assertIn("--frozen --no-sync", line)
 
+    def test_one_failed_export_does_not_block_other_cpu_candidates(self):
+        workflow = Path(".github/workflows/benchmark.yml").read_text(encoding="utf-8")
+        cpu_job = workflow.split("benchmark-cpu:", maxsplit=1)[1].split(
+            "benchmark-gpu:", maxsplit=1
+        )[0]
+
+        self.assertIn("needs.discover.result == 'success'", cpu_job)
+        self.assertNotIn("needs.export-onnx.result == 'success'", cpu_job)
+
 
 if __name__ == "__main__":
     unittest.main()

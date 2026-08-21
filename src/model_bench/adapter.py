@@ -18,10 +18,13 @@ def load_forward_module(path: Path) -> ModuleType:
         raise RuntimeError(f"Cannot import forward module: {path}")
     module = importlib.util.module_from_spec(spec)
     experiment_path = str(path.parent.resolve())
+    repository_path = str(path.resolve().parents[2])
     sys.path.insert(0, experiment_path)
+    sys.path.insert(0, repository_path)
     try:
         spec.loader.exec_module(module)
     finally:
+        sys.path.remove(repository_path)
         sys.path.remove(experiment_path)
     return module
 
