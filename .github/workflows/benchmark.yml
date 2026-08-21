@@ -7,6 +7,7 @@ on:
     paths:
       - "experiments/*/CPU"
       - "experiments/*/GPU"
+      - "experiments/*/PRIMARY"
       - "experiments/*/forward.py"
       - "experiments/*/*.py"
       - "experiments/*/weights.url"
@@ -86,13 +87,14 @@ jobs:
           if [[ "${EVENT_NAME}" == "workflow_dispatch" ]]; then
             selection=(--experiment "${MANUAL_EXPERIMENT}")
           else
-            selection=(--base "${BASE_SHA}" --head "${SOURCE_SHA}")
+            selection=(--base "${BASE_SHA}" --head "${SOURCE_SHA}" --primary-only)
           fi
           if [[ "${EVENT_NAME}" != "workflow_dispatch" ]]; then
             PYTHONPATH=src python -m model_bench discover \
               "${selection[@]}" --reject-mixed-infrastructure >/dev/null
           fi
-          all="$(PYTHONPATH=src python -m model_bench discover "${selection[@]}")"
+          all="$(PYTHONPATH=src python -m model_bench discover \
+            "${selection[@]}" --unique-experiments)"
           cpu="$(PYTHONPATH=src python -m model_bench discover "${selection[@]}" --backend cpu)"
           gpu="$(PYTHONPATH=src python -m model_bench discover "${selection[@]}" --backend gpu)"
           {
@@ -216,7 +218,7 @@ jobs:
             --output bundles
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: bundle-${{ matrix.candidate.backend }}-${{ matrix.candidate.name }}
+          name: bundle-${{ matrix.candidate.name }}
           path: bundles/${{ matrix.candidate.name }}/
           if-no-files-found: error
           retention-days: 7
@@ -252,7 +254,7 @@ jobs:
       - run: uv sync --frozen --extra cpu
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          name: bundle-cpu-${{ matrix.candidate.name }}
+          name: bundle-${{ matrix.candidate.name }}
           path: bundles/${{ matrix.candidate.name }}
       - run: |
           uv run --frozen --no-sync model-bench benchmark-cpu \
@@ -292,8 +294,12 @@ jobs:
           persist-credentials: false
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          pattern: bundle-gpu-*
+          pattern: bundle-*
           path: bundles
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: dataset-${{ fromJSON(needs.discover.outputs.gpu)[0].name }}
+          path: dataset
       - name: Authenticate in Yandex Cloud
         env:
           YC_SA_JSON_CREDENTIALS: ${{ secrets.YC_SA_JSON_CREDENTIALS }}
@@ -312,7 +318,7 @@ jobs:
           EXPECTED_GPU_MODEL: ${{ vars.EXPECTED_GPU_MODEL }}
           EXPECTED_TENSORRT_VERSION: ${{ vars.EXPECTED_TENSORRT_VERSION }}
           YC_GPU_INSTANCE_ID: ${{ vars.YC_GPU_INSTANCE_ID }}
-        run: bash trusted/scripts/run_remote_gpu.sh bundles results trusted
+        run: bash trusted/scripts/run_remote_gpu.sh bundles results trusted dataset
       - name: Write summary
         run: python trusted/scripts/write_summary.py results >>"${GITHUB_STEP_SUMMARY}"
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

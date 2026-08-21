@@ -21,7 +21,13 @@ class CliTest(unittest.TestCase):
                 "a" * 64 + "\n", encoding="ascii"
             )
             (experiment / "dataset.json").write_text(
-                json.dumps({"uri": "s3://datasets/validation", "include": ["images"]}),
+                json.dumps(
+                    {
+                        "uri": "s3://datasets/validation",
+                        "include": ["images"],
+                        "format": "cityscapes_segmentation_npz_v1",
+                    }
+                ),
                 encoding="utf-8",
             )
             (experiment / "metrics.json").write_text(
@@ -76,6 +82,37 @@ class CliTest(unittest.TestCase):
             main()
 
         output.assert_called_once_with(Path("results/model/report.json"))
+
+    @patch("model_bench.cli.tensorrt.benchmark_gpu_bundle")
+    def test_gpu_benchmark_receives_validation_dataset(self, benchmark):
+        benchmark.return_value = Path("results/model/report.json")
+
+        with (
+            patch(
+                "sys.argv",
+                [
+                    "model-bench",
+                    "benchmark-gpu",
+                    "--bundle",
+                    "bundles/model",
+                    "--results",
+                    "results",
+                    "--dataset",
+                    "dataset",
+                ],
+            ),
+            patch("builtins.print"),
+        ):
+            main()
+
+        self.assertEqual(
+            benchmark.call_args.args[:3],
+            (
+                Path("bundles/model"),
+                Path("results"),
+                Path("dataset"),
+            ),
+        )
 
 
 if __name__ == "__main__":

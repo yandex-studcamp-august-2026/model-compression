@@ -9,6 +9,7 @@ from model_bench.reporting import export_latency_artifacts, summarize_latency
 from model_bench.tensorrt import (
     benchmark_engine,
     build_engine,
+    evaluate_engine_quality,
     load_gpu_compute_samples,
     parse_throughput,
     parse_trtexec_version,
@@ -230,7 +231,7 @@ class TensorRTMetricsTest(unittest.TestCase):
                             "task": "depth",
                             "output_name": None,
                             "class_axis": None,
-                            "require_exact_label_map": False,
+                            "minimum_pixel_agreement": None,
                         },
                     }
                 ),
@@ -265,6 +266,98 @@ class TensorRTMetricsTest(unittest.TestCase):
             )
             self.assertEqual(len(report["samples"]), 2)
             self.assertEqual(run.call_count, 2)
+
+    @patch("model_bench.tensorrt.run_trtexec")
+    def test_evaluates_tensorrt_miou_on_bound_dataset(self, run):
+        import numpy as np
+
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            dataset = root / "dataset"
+            samples = dataset / "samples"
+            samples.mkdir(parents=True)
+            image = np.zeros((2, 2, 3), dtype=np.uint8)
+            label = np.array([[0, 1], [0, 1]], dtype=np.uint8)
+            np.savez(samples / "sample.npz", image=image, label=label)
+            provenance = {
+                "uri": "s3://datasets/cityscapes",
+                "include": ["samples"],
+                "format": "cityscapes_segmentation_npz_v1",
+                "object_count": 1,
+                "total_bytes": 100,
+                "listing_sha256": "a" * 64,
+            }
+            (dataset / "_dataset_manifest.json").write_text(
+                json.dumps(provenance), encoding="utf-8"
+            )
+            bundle = {
+                "input_names": ["pixels"],
+                "output_names": ["logits"],
+                "input_shapes": [[1, 3, 2, 2]],
+                "training_metrics": {"task": "segmentation"},
+                "conversion_quality": {
+                    "source_metrics": {"mIoU": 1.0},
+                    "tolerance": 1e-4,
+                    "dataset": provenance,
+                },
+            }
+
+            def write_logits(_arguments, cwd=None):
+                logits = np.array(
+                    [[[[2, 0], [2, 0]], [[0, 2], [0, 2]]]], dtype=np.float32
+                )
+                logits.tofile(cwd / "logits.output.1.2.2.2.FP32.raw")
+                return "ok"
+
+            run.side_effect = write_logits
+            with patch.multiple(
+                "model_bench.tensorrt",
+                CITYSCAPES_CLASSES=2,
+                CITYSCAPES_IMAGE_SHAPE=(2, 2, 3),
+                CITYSCAPES_TARGET_SHAPE=(2, 2),
+            ):
+                report, _ = evaluate_engine_quality(
+                    root / "model.plan",
+                    "pixels:1x3x2x2",
+                    dataset,
+                    root / "work",
+                    bundle,
+                )
+
+            self.assertTrue(report["passed"])
+            self.assertEqual(report["post_conversion_metrics"], {"mIoU": 1.0})
+            self.assertEqual(report["sample_count"], 1)
+
+    def test_rejects_quality_dataset_with_different_provenance(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            dataset = root / "dataset"
+            dataset.mkdir()
+            actual = {
+                "uri": "s3://datasets/wrong",
+                "include": ["samples"],
+                "format": "cityscapes_segmentation_npz_v1",
+                "object_count": 1,
+                "total_bytes": 100,
+                "listing_sha256": "a" * 64,
+            }
+            (dataset / "_dataset_manifest.json").write_text(
+                json.dumps(actual), encoding="utf-8"
+            )
+            bundle = {
+                "conversion_quality": {
+                    "dataset": {**actual, "uri": "s3://datasets/cityscapes"}
+                }
+            }
+
+            with self.assertRaisesRegex(ValueError, "provenance"):
+                evaluate_engine_quality(
+                    root / "model.plan",
+                    "pixels:1x3x2x2",
+                    dataset,
+                    root / "work",
+                    bundle,
+                )
 
 
 if __name__ == "__main__":

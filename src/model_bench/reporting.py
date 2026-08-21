@@ -6,7 +6,9 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 
 
-def quality_result(conversion_quality: object) -> dict[str, object]:
+def quality_result(
+    conversion_quality: object, *, runtime: str = "onnxruntime"
+) -> dict[str, object]:
     if (
         not isinstance(conversion_quality, dict)
         or conversion_quality.get("passed") is not True
@@ -14,7 +16,7 @@ def quality_result(conversion_quality: object) -> dict[str, object]:
         raise ValueError("A passing post-conversion quality result is required")
     return {
         "status": "measured",
-        "scope": "source_and_onnxruntime_on_validation_dataset",
+        "scope": f"source_and_{runtime}_on_validation_dataset",
         "task": conversion_quality.get("task"),
         "source_metrics": conversion_quality.get("source_metrics"),
         "post_conversion_metrics": conversion_quality.get("post_conversion_metrics"),
@@ -22,10 +24,6 @@ def quality_result(conversion_quality: object) -> dict[str, object]:
         "tolerance": conversion_quality.get("tolerance"),
         "passed": True,
         "dataset": conversion_quality.get("dataset"),
-        "tensorrt_interpretation": (
-            "TensorRT quality is accepted only together with its separate "
-            "numerical and task-semantic parity gate against ONNX Runtime."
-        ),
     }
 
 

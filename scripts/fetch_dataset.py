@@ -15,6 +15,7 @@ EXPERIMENT_NAME = re.compile(r"^[a-z][a-z0-9_]*$")
 DEFAULT_MAX_DATASET_BYTES = 10 * 1024**3
 DEFAULT_MAX_DATASET_OBJECTS = 20_000
 MAX_CONFIG_BYTES = 64 * 1024
+SUPPORTED_DATASET_FORMATS = {"cityscapes_segmentation_npz_v1"}
 
 
 def parse_args() -> argparse.Namespace:
@@ -44,10 +45,10 @@ def validated_config_file(source_root: Path, experiment_dir: Path) -> Path:
     return config
 
 
-def load_config(path: Path) -> tuple[str, str, list[str]]:
+def load_config(path: Path) -> tuple[str, str, list[str], str]:
     value = json.loads(path.read_text(encoding="utf-8"))
-    if not isinstance(value, dict) or set(value) != {"uri", "include"}:
-        raise ValueError("dataset.json must contain exactly uri and include")
+    if not isinstance(value, dict) or set(value) != {"uri", "include", "format"}:
+        raise ValueError("dataset.json must contain exactly uri, include, and format")
     uri = value["uri"]
     includes = value["include"]
     if not isinstance(uri, str) or not uri.startswith("s3://"):
@@ -83,7 +84,10 @@ def load_config(path: Path) -> tuple[str, str, list[str]]:
         normalized_includes.append(normalized)
     if len(set(normalized_includes)) != len(normalized_includes):
         raise ValueError("dataset include prefixes must be unique")
-    return bucket, normalized_prefix, normalized_includes
+    dataset_format = value["format"]
+    if dataset_format not in SUPPORTED_DATASET_FORMATS:
+        raise ValueError(f"unsupported dataset format: {dataset_format!r}")
+    return bucket, normalized_prefix, normalized_includes, dataset_format
 
 
 def _unsafe_relative_path(value: str) -> bool:
@@ -142,6 +146,7 @@ def download_dataset(
     bucket: str,
     root_prefix: str,
     includes: list[str],
+    dataset_format: str,
     output: Path,
 ) -> dict[str, Any]:
     if output.exists() and any(output.iterdir()):
@@ -165,6 +170,7 @@ def download_dataset(
     return {
         "uri": f"s3://{bucket}/{root_prefix}",
         "include": includes,
+        "format": dataset_format,
         "object_count": len(objects),
         "total_bytes": sum(item["size"] for item in objects),
         "listing_sha256": listing_hash.hexdigest(),
@@ -174,12 +180,14 @@ def download_dataset(
 def main() -> None:
     args = parse_args()
     config = validated_config_file(args.source_root, args.experiment_dir)
-    bucket, prefix, includes = load_config(config)
+    bucket, prefix, includes, dataset_format = load_config(config)
     import boto3
 
     endpoint = os.environ.get("S3_ENDPOINT_URL", "https://storage.yandexcloud.net")
     client = boto3.client("s3", endpoint_url=endpoint)
-    manifest = download_dataset(client, bucket, prefix, includes, args.output)
+    manifest = download_dataset(
+        client, bucket, prefix, includes, dataset_format, args.output
+    )
     (args.output / "_dataset_manifest.json").write_text(
         json.dumps(manifest, indent=2, ensure_ascii=False), encoding="utf-8"
     )

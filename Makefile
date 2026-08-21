@@ -6,7 +6,7 @@ DATASET ?=
 BUNDLE ?=
 RESULTS ?= results
 
-.PHONY: help sync install install-dev format lint test check discover validate export benchmark clean
+.PHONY: help sync install install-dev format lint test check discover validate export benchmark-cpu benchmark-gpu clean
 
 help:
 	@echo "make install                         Reproduce the locked runtime"
@@ -16,7 +16,8 @@ help:
 	@echo "make discover                        List benchmark candidates"
 	@echo "make validate EXPERIMENT=...         Validate one experiment contract"
 	@echo "make export EXPERIMENT=... DATASET=... [WEIGHTS=...]"
-	@echo "make benchmark EXPERIMENT=... BUNDLE=..."
+	@echo "make benchmark-cpu BUNDLE=..."
+	@echo "make benchmark-gpu BUNDLE=... DATASET=..."
 
 sync:
 	$(UV) sync --frozen --extra dev --extra storage --extra export --extra cpu
@@ -54,18 +55,16 @@ export:
 		--dataset "$(DATASET)" --output bundles \
 		$(if $(WEIGHTS),--weights "$(WEIGHTS)",)
 
-benchmark:
-	@test -n "$(EXPERIMENT)" || { echo "EXPERIMENT is required" >&2; exit 2; }
+benchmark-cpu:
 	@test -n "$(BUNDLE)" || { echo "BUNDLE is required" >&2; exit 2; }
-	@if test -f "$(EXPERIMENT)/CPU"; then \
-		PYTHONPATH=src $(PYTHON) -m model_bench benchmark-cpu \
-			--bundle "$(BUNDLE)" --results "$(RESULTS)"; \
-	elif test -f "$(EXPERIMENT)/GPU"; then \
-		PYTHONPATH=src $(PYTHON) -m model_bench benchmark-gpu \
-			--bundle "$(BUNDLE)" --results "$(RESULTS)"; \
-	else \
-		echo "$(EXPERIMENT) must contain CPU or GPU" >&2; exit 2; \
-	fi
+	PYTHONPATH=src $(PYTHON) -m model_bench benchmark-cpu \
+		--bundle "$(BUNDLE)" --results "$(RESULTS)"
+
+benchmark-gpu:
+	@test -n "$(BUNDLE)" || { echo "BUNDLE is required" >&2; exit 2; }
+	@test -n "$(DATASET)" || { echo "DATASET is required" >&2; exit 2; }
+	PYTHONPATH=src $(PYTHON) -m model_bench benchmark-gpu \
+		--bundle "$(BUNDLE)" --dataset "$(DATASET)" --results "$(RESULTS)"
 
 clean:
 	rm -rf bundles results

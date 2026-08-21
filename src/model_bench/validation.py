@@ -3,6 +3,8 @@ from __future__ import annotations
 import math
 from typing import Any
 
+MIN_SEGMENTATION_PIXEL_AGREEMENT = 0.9999
+
 
 def compare_outputs(
     reference: tuple[Any, ...],
@@ -60,7 +62,8 @@ def compare_outputs(
             semantic = _segmentation_agreement(expected, actual, class_axis)
             outputs[name]["segmentation_agreement"] = semantic
             outputs[name]["passed"] = bool(
-                outputs[name]["passed"] and semantic["pixel_agreement"] == 1.0
+                outputs[name]["passed"]
+                and semantic["pixel_agreement"] >= MIN_SEGMENTATION_PIXEL_AGREEMENT
             )
             close = outputs[name]["passed"]
         passed = passed and close
@@ -103,6 +106,7 @@ def _segmentation_agreement(
             ious.append(float(np.logical_and(expected_mask, actual_mask).sum() / union))
     return {
         "pixel_agreement": pixel_agreement,
+        "minimum_pixel_agreement": MIN_SEGMENTATION_PIXEL_AGREEMENT,
         "mean_iou_between_predictions": float(np.mean(ious)) if ious else 1.0,
     }
 

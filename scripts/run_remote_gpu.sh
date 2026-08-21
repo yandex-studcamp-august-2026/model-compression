@@ -36,9 +36,10 @@ if [[ ! -f "${GPU_SSH_KEY_FILE}" || -L "${GPU_SSH_KEY_FILE}" ]]; then
   exit 2
 fi
 
-readonly bundles_dir="${1:?usage: run_remote_gpu.sh BUNDLES_DIR RESULTS_DIR RUNTIME_DIR}"
-readonly results_dir="${2:?usage: run_remote_gpu.sh BUNDLES_DIR RESULTS_DIR RUNTIME_DIR}"
-readonly runtime_dir="${3:?usage: run_remote_gpu.sh BUNDLES_DIR RESULTS_DIR RUNTIME_DIR}"
+readonly bundles_dir="${1:?usage: run_remote_gpu.sh BUNDLES_DIR RESULTS_DIR RUNTIME_DIR DATASET_DIR}"
+readonly results_dir="${2:?usage: run_remote_gpu.sh BUNDLES_DIR RESULTS_DIR RUNTIME_DIR DATASET_DIR}"
+readonly runtime_dir="${3:?usage: run_remote_gpu.sh BUNDLES_DIR RESULTS_DIR RUNTIME_DIR DATASET_DIR}"
+readonly dataset_dir="${4:?usage: run_remote_gpu.sh BUNDLES_DIR RESULTS_DIR RUNTIME_DIR DATASET_DIR}"
 readonly known_hosts="${RUNNER_TEMP}/known_hosts"
 readonly remote_dir="/tmp/model-bench-${GITHUB_RUN_ID:-local}-${GITHUB_RUN_ATTEMPT:-0}"
 
@@ -52,6 +53,10 @@ while IFS= read -r -d '' bundle; do
 done < <(find "${bundles_dir}" -mindepth 1 -maxdepth 1 -type d -print0)
 if [[ "${bundle_count}" == "0" ]]; then
   echo "No GPU bundle directories found under ${bundles_dir}" >&2
+  exit 2
+fi
+if [[ ! -f "${dataset_dir}/_dataset_manifest.json" || -L "${dataset_dir}/_dataset_manifest.json" ]]; then
+  echo "Invalid GPU validation dataset directory: ${dataset_dir}" >&2
   exit 2
 fi
 
@@ -160,11 +165,13 @@ ssh "${ssh_options[@]}" "${ssh_target}" \
   "systemctl is-enabled --quiet benchmark-auto-shutdown.service; \
 sudo shutdown -h +180 >/dev/null; \
 find /tmp -mindepth 1 -maxdepth 1 -type d -name 'model-bench-*' -exec rm -rf -- {} +; \
-mkdir -p '${remote_dir}/bundles' '${remote_dir}/results'"
+mkdir -p '${remote_dir}/bundles' '${remote_dir}/results' '${remote_dir}/dataset'"
 tar -C "${runtime_dir}" -cf - src | \
   ssh "${ssh_options[@]}" "${ssh_target}" "tar -C '${remote_dir}' -xf -"
 tar -C "${bundles_dir}" -cf - . | \
   ssh "${ssh_options[@]}" "${ssh_target}" "tar -C '${remote_dir}/bundles' -xf -"
+tar -C "${dataset_dir}" -cf - . | \
+  ssh "${ssh_options[@]}" "${ssh_target}" "tar -C '${remote_dir}/dataset' -xf -"
 
 remote_status=0
 ssh "${ssh_options[@]}" "${ssh_target}" \
@@ -196,6 +203,7 @@ while IFS= read -r -d '' bundle; do
   if ! PYTHONPATH="${REMOTE_DIR}/src" python3 -m model_bench benchmark-gpu \
     --bundle "${bundle}" \
     --results "${REMOTE_DIR}/results" \
+    --dataset "${REMOTE_DIR}/dataset" \
     --warmup-ms 5000 \
     --iterations 1000 \
     --throughput-streams 8; then

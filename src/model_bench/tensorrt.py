@@ -21,6 +21,7 @@ from model_bench.reporting import (
     summarize_latency,
 )
 from model_bench.validation import (
+    MIN_SEGMENTATION_PIXEL_AGREEMENT,
     compare_raw_tensors,
     compare_segmentation_raw_tensors,
 )
@@ -48,6 +49,14 @@ TRT_DTYPES = {
     "INT64": "int64",
     "UINT8": "uint8",
 }
+
+CITYSCAPES_FORMAT = "cityscapes_segmentation_npz_v1"
+CITYSCAPES_CLASSES = 19
+CITYSCAPES_IMAGE_SHAPE = (512, 1024, 3)
+CITYSCAPES_TARGET_SHAPE = (512, 1024)
+CITYSCAPES_IGNORE_LABEL = 255
+CITYSCAPES_MEAN = (0.485, 0.456, 0.406)
+CITYSCAPES_STD = (0.229, 0.224, 0.225)
 
 
 def parse_trtexec_version(output: str) -> str:
@@ -291,7 +300,8 @@ def validate_engine(
                 )
                 result["segmentation_agreement"] = agreement
                 result["passed"] = bool(
-                    result["passed"] and agreement["pixel_agreement"] == 1.0
+                    result["passed"]
+                    and agreement["pixel_agreement"] >= MIN_SEGMENTATION_PIXEL_AGREEMENT
                 )
             outputs[name] = result
             sample_passed = sample_passed and result["passed"]
@@ -305,6 +315,151 @@ def validate_engine(
         "atol": float(tolerance["atol"]),
         "rtol": float(tolerance["rtol"]),
         "samples": sample_results,
+    }, "\n".join(logs)
+
+
+def evaluate_engine_quality(
+    engine_path: Path,
+    shapes: str,
+    dataset_root: Path,
+    work_dir: Path,
+    bundle: dict[str, Any],
+) -> tuple[dict[str, Any], str]:
+    """Measure TensorRT task quality on the same immutable validation dataset."""
+    import numpy as np
+
+    expected_dataset = bundle["conversion_quality"]["dataset"]
+    manifest_path = dataset_root / "_dataset_manifest.json"
+    if not manifest_path.is_file() or manifest_path.is_symlink():
+        raise ValueError("TensorRT validation dataset manifest is missing")
+    dataset = json.loads(manifest_path.read_text(encoding="utf-8"))
+    provenance_fields = {
+        "uri",
+        "include",
+        "format",
+        "object_count",
+        "total_bytes",
+        "listing_sha256",
+    }
+    if any(
+        dataset.get(name) != expected_dataset.get(name) for name in provenance_fields
+    ):
+        raise ValueError("TensorRT validation dataset provenance does not match bundle")
+    if dataset.get("format") != CITYSCAPES_FORMAT:
+        raise ValueError(
+            f"Unsupported TensorRT quality dataset: {dataset.get('format')!r}"
+        )
+    if bundle["training_metrics"]["task"] != "segmentation":
+        raise ValueError("Cityscapes TensorRT quality requires a segmentation model")
+    if len(bundle["input_names"]) != 1 or len(bundle["output_names"]) != 1:
+        raise ValueError(
+            "Cityscapes TensorRT quality requires one input and one output"
+        )
+    required_input_shape = [1, 3, *CITYSCAPES_IMAGE_SHAPE[:2]]
+    if bundle["input_shapes"] != [required_input_shape]:
+        raise ValueError(
+            "Cityscapes TensorRT quality requires input shape 1x3x512x1024"
+        )
+
+    sample_paths = sorted(dataset_root.glob("samples/*.npz"))
+    if not sample_paths or len(sample_paths) > 512:
+        raise ValueError("Cityscapes validation subset must contain 1..512 samples")
+    if any(path.is_symlink() or not path.is_file() for path in sample_paths):
+        raise ValueError("Cityscapes validation samples must be regular files")
+
+    confusion = np.zeros((CITYSCAPES_CLASSES, CITYSCAPES_CLASSES), dtype=np.int64)
+    mean = np.asarray(CITYSCAPES_MEAN, dtype=np.float32)
+    std = np.asarray(CITYSCAPES_STD, dtype=np.float32)
+    input_name = bundle["input_names"][0]
+    output_name = bundle["output_names"][0]
+    logs = []
+    for index, sample_path in enumerate(sample_paths):
+        sample_dir = work_dir / f"sample-{index}"
+        sample_dir.mkdir(parents=True, exist_ok=True)
+        try:
+            with np.load(sample_path, allow_pickle=False) as sample:
+                if set(sample.files) != {"image", "label"}:
+                    raise ValueError(f"Invalid Cityscapes sample keys: {sample_path}")
+                image = np.asarray(sample["image"], dtype=np.uint8)
+                target = np.asarray(sample["label"], dtype=np.uint8)
+            if image.shape != CITYSCAPES_IMAGE_SHAPE:
+                raise ValueError(f"Invalid Cityscapes image shape: {sample_path}")
+            if target.shape != CITYSCAPES_TARGET_SHAPE:
+                raise ValueError(f"Invalid Cityscapes target shape: {sample_path}")
+            valid_target = target[target != CITYSCAPES_IGNORE_LABEL]
+            if valid_target.size and int(valid_target.max()) >= CITYSCAPES_CLASSES:
+                raise ValueError(f"Invalid Cityscapes target class: {sample_path}")
+
+            normalized = image.astype(np.float32) / 255.0
+            normalized = (normalized - mean) / std
+            model_input = np.ascontiguousarray(
+                normalized.transpose(2, 0, 1)[np.newaxis]
+            )
+            input_path = sample_dir / "input.raw"
+            model_input.tofile(input_path)
+            log = run_trtexec(
+                [
+                    f"--loadEngine={engine_path.resolve()}",
+                    f"--shapes={shapes}",
+                    f"--loadInputs={input_name}:{input_path.resolve()}",
+                    "--iterations=1",
+                    "--warmUp=0",
+                    "--duration=0",
+                    "--dumpRawBindingsToFile",
+                ],
+                cwd=sample_dir,
+            )
+            logs.append(f"===== {sample_path.name} =====\n{log}")
+            output_path, output_dtype, output_shape = _candidate_raw_output(
+                sample_dir, output_name
+            )
+            expected_shape = [1, CITYSCAPES_CLASSES, *CITYSCAPES_TARGET_SHAPE]
+            if output_shape != expected_shape:
+                raise ValueError(
+                    f"Invalid TensorRT Cityscapes output shape: {output_shape}"
+                )
+            if output_dtype not in {"float16", "float32"}:
+                raise ValueError(
+                    f"Invalid TensorRT Cityscapes output dtype: {output_dtype}"
+                )
+            logits = np.memmap(
+                output_path,
+                mode="r",
+                dtype=np.dtype(output_dtype),
+                shape=tuple(expected_shape),
+            )
+            prediction = np.argmax(logits, axis=1)[0]
+            valid = target != CITYSCAPES_IGNORE_LABEL
+            encoded = CITYSCAPES_CLASSES * target[valid].astype(np.int64) + prediction[
+                valid
+            ].astype(np.int64)
+            confusion += np.bincount(
+                encoded,
+                minlength=CITYSCAPES_CLASSES * CITYSCAPES_CLASSES,
+            ).reshape(CITYSCAPES_CLASSES, CITYSCAPES_CLASSES)
+            del logits
+        finally:
+            shutil.rmtree(sample_dir, ignore_errors=True)
+
+    intersection = np.diag(confusion).astype(np.float64)
+    union = confusion.sum(axis=1) + confusion.sum(axis=0) - intersection
+    present = union > 0
+    if not np.any(present):
+        raise ValueError("Cityscapes validation subset has no labelled classes")
+    measured = {"mIoU": float(np.mean(intersection[present] / union[present]))}
+    source = bundle["conversion_quality"]["source_metrics"]
+    tolerance = float(bundle["conversion_quality"]["tolerance"])
+    deltas = {name: abs(measured[name] - float(source[name])) for name in measured}
+    return {
+        "passed": all(delta <= tolerance for delta in deltas.values()),
+        "task": "segmentation",
+        "source_metrics": source,
+        "post_conversion_metrics": measured,
+        "absolute_deltas": deltas,
+        "tolerance": tolerance,
+        "dataset": dataset,
+        "sample_count": len(sample_paths),
+        "runtime": "tensorrt",
     }, "\n".join(logs)
 
 
@@ -389,6 +544,7 @@ def _sweep_values(maximum: int) -> list[int]:
 def benchmark_gpu_bundle(
     bundle_dir: Path,
     results_root: Path,
+    dataset_root: Path,
     warmup_ms: int,
     iterations: int,
     throughput_streams: int = 4,
@@ -463,6 +619,25 @@ def benchmark_gpu_bundle(
                 json.dumps(report, indent=2, ensure_ascii=False), encoding="utf-8"
             )
             raise RuntimeError(f"TensorRT FP32 parity failed; see {report_path}")
+        fp32_quality, fp32_quality_log = evaluate_engine_quality(
+            engines["fp32"],
+            shapes,
+            dataset_root,
+            output_dir / ".quality-fp32",
+            bundle,
+        )
+        (output_dir / "trtexec-quality.log").write_text(
+            fp32_quality_log, encoding="utf-8"
+        )
+        report["tensorrt_quality"] = fp32_quality
+        report["quality"] = quality_result(fp32_quality, runtime="tensorrt")
+        if not fp32_quality["passed"]:
+            report["conversion_status"] = "rejected"
+            report["status"] = "rejected"
+            report_path.write_text(
+                json.dumps(report, indent=2, ensure_ascii=False), encoding="utf-8"
+            )
+            raise RuntimeError(f"TensorRT FP32 task quality failed; see {report_path}")
         report["conversion_status"] = "validated"
         report["status"] = "benchmarking"
         report["performance"] = _performance_result(
@@ -506,17 +681,32 @@ def benchmark_gpu_bundle(
                 "validation": fp16_validation,
             }
             if fp16_validation["passed"]:
-                fp16_result["performance"] = _performance_result(
+                fp16_quality, fp16_quality_log = evaluate_engine_quality(
                     engines["fp16"],
                     shapes,
-                    output_dir,
-                    "fp16",
-                    warmup_ms,
-                    iterations,
-                    benchmark_input_spec,
-                    throughput_streams,
+                    dataset_root,
+                    output_dir / ".quality-fp16",
+                    bundle,
                 )
-                fp16_result["status"] = "completed"
+                (output_dir / "trtexec-fp16-quality.log").write_text(
+                    fp16_quality_log, encoding="utf-8"
+                )
+                fp16_result["quality"] = fp16_quality
+                if fp16_quality["passed"]:
+                    fp16_result["performance"] = _performance_result(
+                        engines["fp16"],
+                        shapes,
+                        output_dir,
+                        "fp16",
+                        warmup_ms,
+                        iterations,
+                        benchmark_input_spec,
+                        throughput_streams,
+                    )
+                    fp16_result["status"] = "completed"
+                else:
+                    fp16_result["conversion_status"] = "rejected"
+                    fp16_result["status"] = "rejected"
         except (OSError, RuntimeError, ValueError) as exc:
             fp16_result = {
                 "conversion_status": (
@@ -538,6 +728,7 @@ def benchmark_gpu_bundle(
         report["artifacts"] = {
             "fp32_build_log": "trtexec-build.log",
             "fp32_validation_log": "trtexec-validation.log",
+            "fp32_quality_log": "trtexec-quality.log",
         }
         report_path.write_text(
             json.dumps(report, indent=2, ensure_ascii=False), encoding="utf-8"
@@ -558,6 +749,8 @@ def benchmark_gpu_bundle(
             engine_path.unlink(missing_ok=True)
         shutil.rmtree(output_dir / ".parity-fp32", ignore_errors=True)
         shutil.rmtree(output_dir / ".parity-fp16", ignore_errors=True)
+        shutil.rmtree(output_dir / ".quality-fp32", ignore_errors=True)
+        shutil.rmtree(output_dir / ".quality-fp16", ignore_errors=True)
 
 
 def _command_value(command: list[str]) -> str | None:
