@@ -1,1 +1,1 @@
-s3://datasets-studcamp/benchmark_checkpoints/pretrained_eskd_b2_to_b0/checkpoint.pt
+s3://checkpoints-studcamp/checkpoints/pretrained_eskd_b2_to_b0/checkpoint.pt

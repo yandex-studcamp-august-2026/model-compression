@@ -1,1 +1,1 @@
-s3://datasets-studcamp/benchmark_checkpoints/seg_t_forward_kl_a050_t010/checkpoint.pt
+s3://checkpoints-studcamp/checkpoints/seg_t_forward_kl_a050_t010/checkpoint.pt
