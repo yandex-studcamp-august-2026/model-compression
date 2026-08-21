@@ -21,6 +21,7 @@ from model_bench.reporting import (
     summarize_latency,
 )
 from model_bench.validation import (
+    MIN_SEGMENTATION_PIXEL_AGREEMENT,
     compare_raw_tensors,
     compare_segmentation_raw_tensors,
 )
@@ -291,7 +292,8 @@ def validate_engine(
                 )
                 result["segmentation_agreement"] = agreement
                 result["passed"] = bool(
-                    result["passed"] and agreement["pixel_agreement"] == 1.0
+                    result["passed"]
+                    and agreement["pixel_agreement"] >= MIN_SEGMENTATION_PIXEL_AGREEMENT
                 )
             outputs[name] = result
             sample_passed = sample_passed and result["passed"]

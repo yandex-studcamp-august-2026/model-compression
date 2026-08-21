@@ -88,6 +88,32 @@ class ValidationTest(unittest.TestCase):
             0.0,
         )
 
+    def test_segmentation_allows_negligible_boundary_label_changes(self):
+        import numpy as np
+
+        reference = np.zeros((1, 2, 100, 100), dtype=np.float32)
+        candidate = reference.copy()
+        reference[:, 0] = 1.0
+        candidate[:, 0] = 1.0
+        reference[0, 1, 0, 0] = 0.99999
+        candidate[0, 0, 0, 0] = 0.99999
+        candidate[0, 1, 0, 0] = 1.0
+
+        result = compare_outputs(
+            (reference,),
+            (candidate,),
+            ("logits",),
+            atol=1e-4,
+            rtol=1e-4,
+            task="segmentation",
+            semantic_output_name="logits",
+        )
+
+        agreement = result["outputs"]["logits"]["segmentation_agreement"]
+        self.assertTrue(result["passed"])
+        self.assertEqual(agreement["pixel_agreement"], 0.9999)
+        self.assertEqual(agreement["minimum_pixel_agreement"], 0.9999)
+
     def test_raw_segmentation_agreement_detects_tensorrt_label_change(self):
         import numpy as np
 
