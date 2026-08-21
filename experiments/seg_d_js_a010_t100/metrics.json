@@ -1,0 +1,13 @@
+{
+  "experiment_name": "seg_d_js_a010_t100",
+  "author": "misha",
+  "hypothesis": "divergence=js will improve mIoU relative to the CE-only SegFormer-B0 baseline.",
+  "task": "segmentation",
+  "recipe": "soft_label_js",
+  "metrics": {
+    "mIoU": 0.7174035906791687
+  },
+  "baseline_metrics": {
+    "mIoU": 0.7173574566841125
+  }
+}

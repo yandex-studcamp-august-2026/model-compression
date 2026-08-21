@@ -1,0 +1,13 @@
+{
+  "experiment_name": "pretrained_assistant_kd_b2_b1_b0",
+  "author": "studcamp",
+  "hypothesis": "Последовательная цепочка B2 → дообученный B1 → B0 сократит capacity gap лучше прямого B2 → B0.",
+  "task": "segmentation",
+  "recipe": "teacher_assistant_kd",
+  "metrics": {
+    "mIoU": 0.7288278822988601
+  },
+  "baseline_metrics": {
+    "mIoU": 0.7276427182009326
+  }
+}

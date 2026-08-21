@@ -1,0 +1,6 @@
+{
+  "uri": "s3://datasets-studcamp/benchmark_validation/cityscapes_512x1024",
+  "include": [
+    "samples"
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "experiment_name": "seg_d_hellinger_a010_t100",
+  "author": "misha",
+  "hypothesis": "divergence=hellinger will improve mIoU relative to the CE-only SegFormer-B0 baseline.",
+  "task": "segmentation",
+  "recipe": "soft_label_hellinger",
+  "metrics": {
+    "mIoU": 0.7173945307731628
+  },
+  "baseline_metrics": {
+    "mIoU": 0.7173574566841125
+  }
+}
