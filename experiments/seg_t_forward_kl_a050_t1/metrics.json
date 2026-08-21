@@ -1,0 +1,13 @@
+{
+  "experiment_name": "seg_t_forward_kl_a050_t1",
+  "author": "misha",
+  "hypothesis": "temperature=1 will improve mIoU relative to the CE-only SegFormer-B0 baseline.",
+  "task": "segmentation",
+  "recipe": "soft_label_forward_kl",
+  "metrics": {
+    "mIoU": 0.7196736931800842
+  },
+  "baseline_metrics": {
+    "mIoU": 0.7173574566841125
+  }
+}

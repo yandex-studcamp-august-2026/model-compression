@@ -1,0 +1,13 @@
+{
+  "experiment_name": "pretrained_parallel_kd_b1_b2_to_b0",
+  "author": "studcamp",
+  "hypothesis": "Одновременный soft-target сигнал от B1 и B2 стабильнее одного B2 и повысит mIoU B0.",
+  "task": "segmentation",
+  "recipe": "parallel_kd",
+  "metrics": {
+    "mIoU": 0.7321966109625918
+  },
+  "baseline_metrics": {
+    "mIoU": 0.7276427182009326
+  }
+}

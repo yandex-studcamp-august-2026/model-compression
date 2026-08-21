@@ -1,0 +1,13 @@
+{
+  "experiment_name": "seg_s0_pretrained_student",
+  "author": "misha",
+  "hypothesis": "The pretrained B0 provides the lower student baseline.",
+  "task": "segmentation",
+  "recipe": "pretrained_student",
+  "metrics": {
+    "mIoU": 0.7024375796318054
+  },
+  "baseline_metrics": {
+    "mIoU": 0.7173574566841125
+  }
+}

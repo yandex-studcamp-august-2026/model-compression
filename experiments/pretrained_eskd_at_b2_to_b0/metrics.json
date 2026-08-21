@@ -1,0 +1,13 @@
+{
+  "experiment_name": "pretrained_eskd_at_b2_to_b0",
+  "author": "studcamp",
+  "hypothesis": "Attention Transfer на промежуточных картах улучшит ESKD для B0.",
+  "task": "segmentation",
+  "recipe": "encoder_stage_kd_attention_transfer",
+  "metrics": {
+    "mIoU": 0.7288792500064062
+  },
+  "baseline_metrics": {
+    "mIoU": 0.7276427182009326
+  }
+}

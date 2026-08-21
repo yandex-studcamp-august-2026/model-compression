@@ -1,0 +1,14 @@
+# t_forward_kl_a050_t075
+
+**Автор:** misha
+**Гипотеза:** temperature=0.75 will improve mIoU relative to the CE-only SegFormer-B0 baseline.
+**Метод:** CE + forward_kl, alpha=0.5, temperature=0.75.
+
+## Результат
+mIoU: 0.710478723 (baseline 0.717357457, -0.006878734)
+
+## Статус гипотезы
+Не подтвердилась: mIoU ниже CE-only baseline.
+
+## Дальнейшие шаги
+Не продолжать эту конфигурацию; проверить feature или boundary KD.

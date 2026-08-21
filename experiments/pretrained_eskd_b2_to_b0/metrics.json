@@ -1,0 +1,13 @@
+{
+  "experiment_name": "pretrained_eskd_b2_to_b0",
+  "author": "studcamp",
+  "hypothesis": "Согласование четырёх encoder stages B0 и B2 улучшит результат поверх logits-KD.",
+  "task": "segmentation",
+  "recipe": "encoder_stage_kd",
+  "metrics": {
+    "mIoU": 0.7296298879670665
+  },
+  "baseline_metrics": {
+    "mIoU": 0.7276427182009326
+  }
+}
