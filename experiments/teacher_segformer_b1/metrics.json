@@ -1,0 +1,13 @@
+{
+  "experiment_name": "teacher_segformer_b1",
+  "author": "studcamp",
+  "hypothesis": "SegFormer-B1 is the reference teacher for the B1-to-B0 distillation experiments.",
+  "task": "segmentation",
+  "recipe": "reference_teacher",
+  "metrics": {
+    "mIoU": 0.7552133047602346
+  },
+  "baseline_metrics": {
+    "mIoU": 0.7276427182009326
+  }
+}

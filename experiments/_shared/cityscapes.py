@@ -1,4 +1,4 @@
-"""SegFormer-B0 adapter and fixed-subset Cityscapes evaluator."""
+"""SegFormer adapters and fixed-subset Cityscapes evaluator."""
 
 from __future__ import annotations
 
@@ -31,8 +31,12 @@ _MEAN = np.asarray((0.485, 0.456, 0.406), dtype=np.float32)
 _STD = np.asarray((0.229, 0.224, 0.225), dtype=np.float32)
 
 
-class CityscapesSegFormerB0(SegformerForSemanticSegmentation):
-    """SegFormer-B0 with strict loading of a clean state dict."""
+class _CityscapesSegFormer(SegformerForSemanticSegmentation):
+    """Cityscapes SegFormer with strict loading of a clean state dict."""
+
+    depths: tuple[int, int, int, int]
+    hidden_sizes: tuple[int, int, int, int]
+    decoder_hidden_size: int
 
     def __init__(self, weights_path: Path) -> None:
         config = SegformerConfig(
@@ -40,6 +44,10 @@ class CityscapesSegFormerB0(SegformerForSemanticSegmentation):
             id2label={index: str(index) for index in range(_NUM_CLASSES)},
             label2id={str(index): index for index in range(_NUM_CLASSES)},
             semantic_loss_ignore_index=255,
+            depths=self.depths,
+            hidden_sizes=self.hidden_sizes,
+            decoder_hidden_size=self.decoder_hidden_size,
+            num_attention_heads=(1, 2, 5, 8),
         )
         super().__init__(config)
         state = torch.load(weights_path, map_location="cpu", weights_only=True)
@@ -66,6 +74,30 @@ class CityscapesSegFormerB0(SegformerForSemanticSegmentation):
             mode="bilinear",
             align_corners=False,
         )
+
+
+class CityscapesSegFormerB0(_CityscapesSegFormer):
+    """SegFormer-B0 student architecture."""
+
+    depths = (2, 2, 2, 2)
+    hidden_sizes = (32, 64, 160, 256)
+    decoder_hidden_size = 256
+
+
+class CityscapesSegFormerB1(_CityscapesSegFormer):
+    """SegFormer-B1 reference-teacher architecture."""
+
+    depths = (2, 2, 2, 2)
+    hidden_sizes = (64, 128, 320, 512)
+    decoder_hidden_size = 256
+
+
+class CityscapesSegFormerB2(_CityscapesSegFormer):
+    """SegFormer-B2 reference-teacher architecture."""
+
+    depths = (3, 4, 6, 3)
+    hidden_sizes = (64, 128, 320, 512)
+    decoder_hidden_size = 768
 
 
 def make_inputs(seed: int) -> Tensor:
