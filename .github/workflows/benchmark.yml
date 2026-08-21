@@ -34,7 +34,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: model-benchmark-${{ github.event.pull_request.number || github.ref }}
+  group: model-benchmark-${{ github.event.pull_request.number || inputs.experiment || github.ref }}
   cancel-in-progress: true
 
 env:

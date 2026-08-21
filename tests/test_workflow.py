@@ -3,14 +3,27 @@ from pathlib import Path
 
 
 class WorkflowContractTest(unittest.TestCase):
+    def test_manual_experiments_have_independent_concurrency_groups(self):
+        workflow = Path(".github/workflows/benchmark.yml").read_text(encoding="utf-8")
+
+        self.assertIn(
+            "github.event.pull_request.number || inputs.experiment || github.ref",
+            workflow,
+        )
+
     def test_gpu_artifacts_keep_one_directory_per_experiment(self):
         workflow = Path(".github/workflows/benchmark.yml").read_text(encoding="utf-8")
+        runner = Path("scripts/run_remote_gpu.sh").read_text(encoding="utf-8")
         gpu_download = workflow.split("pattern: bundle-*", maxsplit=1)[1].split(
             "- name: Authenticate", maxsplit=1
         )[0]
 
         self.assertNotIn("merge-multiple: true", gpu_download)
         self.assertIn("path: bundles", gpu_download)
+        self.assertIn('if [[ -f "${bundles_dir}/bundle.json"', runner)
+        self.assertIn(
+            'remote_bundle="${remote_dir}/bundles/bundle-${bundle_index}"', runner
+        )
 
     def test_gpu_job_declares_expected_hardware(self):
         workflow = Path(".github/workflows/benchmark.yml").read_text(encoding="utf-8")

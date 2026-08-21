@@ -43,15 +43,19 @@ readonly dataset_dir="${4:?usage: run_remote_gpu.sh BUNDLES_DIR RESULTS_DIR RUNT
 readonly known_hosts="${RUNNER_TEMP}/known_hosts"
 readonly remote_dir="/tmp/model-bench-${GITHUB_RUN_ID:-local}-${GITHUB_RUN_ATTEMPT:-0}"
 
-bundle_count=0
-while IFS= read -r -d '' bundle; do
-  if [[ ! -f "${bundle}/bundle.json" || -L "${bundle}/bundle.json" ]]; then
-    echo "Invalid GPU bundle directory: ${bundle}" >&2
-    exit 2
-  fi
-  ((bundle_count += 1))
-done < <(find "${bundles_dir}" -mindepth 1 -maxdepth 1 -type d -print0)
-if [[ "${bundle_count}" == "0" ]]; then
+bundle_roots=()
+if [[ -f "${bundles_dir}/bundle.json" && ! -L "${bundles_dir}/bundle.json" ]]; then
+  bundle_roots+=("${bundles_dir}")
+else
+  while IFS= read -r -d '' bundle; do
+    if [[ ! -f "${bundle}/bundle.json" || -L "${bundle}/bundle.json" ]]; then
+      echo "Invalid GPU bundle directory: ${bundle}" >&2
+      exit 2
+    fi
+    bundle_roots+=("${bundle}")
+  done < <(find "${bundles_dir}" -mindepth 1 -maxdepth 1 -type d -print0)
+fi
+if [[ "${#bundle_roots[@]}" == "0" ]]; then
   echo "No GPU bundle directories found under ${bundles_dir}" >&2
   exit 2
 fi
@@ -168,8 +172,14 @@ find /tmp -mindepth 1 -maxdepth 1 -type d -name 'model-bench-*' -exec rm -rf -- 
 mkdir -p '${remote_dir}/bundles' '${remote_dir}/results' '${remote_dir}/dataset'"
 tar -C "${runtime_dir}" -cf - src | \
   ssh "${ssh_options[@]}" "${ssh_target}" "tar -C '${remote_dir}' -xf -"
-tar -C "${bundles_dir}" -cf - . | \
-  ssh "${ssh_options[@]}" "${ssh_target}" "tar -C '${remote_dir}/bundles' -xf -"
+bundle_index=0
+for bundle in "${bundle_roots[@]}"; do
+  remote_bundle="${remote_dir}/bundles/bundle-${bundle_index}"
+  ssh "${ssh_options[@]}" "${ssh_target}" "mkdir -p '${remote_bundle}'"
+  tar -C "${bundle}" -cf - . | \
+    ssh "${ssh_options[@]}" "${ssh_target}" "tar -C '${remote_bundle}' -xf -"
+  ((bundle_index += 1))
+done
 tar -C "${dataset_dir}" -cf - . | \
   ssh "${ssh_options[@]}" "${ssh_target}" "tar -C '${remote_dir}/dataset' -xf -"
 
