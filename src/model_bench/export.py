@@ -21,10 +21,10 @@ from model_bench.adapter import (
     output_names,
 )
 from model_bench.bundle import MAX_INPUT_ELEMENTS, sha256_file
-from model_bench.discovery import Candidate
+from model_bench.discovery import Candidate, candidates_from_directory
 from model_bench.quality import load_metrics
 from model_bench.storage import resolve_weights
-from model_bench.validation import compare_outputs
+from model_bench.validation import MIN_SEGMENTATION_PIXEL_AGREEMENT, compare_outputs
 
 
 def _git_sha() -> str | None:
@@ -258,7 +258,9 @@ def export_candidate(
             "task": task,
             "output_name": semantic_output_name,
             "class_axis": class_axis if task == "segmentation" else None,
-            "require_exact_label_map": task == "segmentation",
+            "minimum_pixel_agreement": (
+                MIN_SEGMENTATION_PIXEL_AGREEMENT if task == "segmentation" else None
+            ),
         },
     }
     (parity_dir / "manifest.json").write_text(
@@ -281,9 +283,12 @@ def export_candidate(
         raise RuntimeError("ONNX export did not create model.onnx")
     benchmark_inputs_path = bundle_dir / "benchmark_inputs.npz"
     bundle = {
-        "schema_version": 4,
+        "schema_version": 6,
         "experiment": candidate.name,
-        "backend": candidate.backend.value,
+        "backends": sorted(
+            item.backend.value
+            for item in candidates_from_directory(candidate.directory)
+        ),
         "git_sha": _git_sha(),
         "created_at": datetime.now(UTC).isoformat(),
         "input_names": list(names),

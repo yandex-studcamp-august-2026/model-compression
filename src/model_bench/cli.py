@@ -13,10 +13,17 @@ from .discovery import (
 )
 
 
-def _required_candidate(experiment: Path) -> Candidate:
-    candidates = discover_candidates(experiment.parent, explicit=experiment)
+def _required_candidate(
+    experiment: Path,
+    backend: Backend | None = None,
+) -> Candidate:
+    candidates = discover_candidates(
+        experiment.parent, explicit=experiment, backend=backend
+    )
     if len(candidates) != 1:
-        raise RuntimeError(f"{experiment} is not a benchmark candidate")
+        if not candidates:
+            raise RuntimeError(f"{experiment} is not a benchmark candidate")
+        return candidates[0]
     return candidates[0]
 
 
@@ -30,6 +37,8 @@ def _parser() -> argparse.ArgumentParser:
     discover.add_argument("--head")
     discover.add_argument("--experiment", type=Path)
     discover.add_argument("--backend", choices=[item.value for item in Backend])
+    discover.add_argument("--primary-only", action="store_true")
+    discover.add_argument("--unique-experiments", action="store_true")
     discover.add_argument("--reject-mixed-infrastructure", action="store_true")
 
     fetch = commands.add_parser("fetch", help="download a candidate checkpoint")
@@ -69,6 +78,7 @@ def _parser() -> argparse.ArgumentParser:
     )
     benchmark_gpu.add_argument("--bundle", type=Path, required=True)
     benchmark_gpu.add_argument("--results", type=Path, required=True)
+    benchmark_gpu.add_argument("--dataset", type=Path, required=True)
     benchmark_gpu.add_argument("--warmup-ms", type=int, default=5000)
     benchmark_gpu.add_argument("--iterations", type=int, default=1000)
     benchmark_gpu.add_argument(
@@ -99,8 +109,9 @@ def main() -> None:
             head=args.head,
             explicit=args.experiment,
             backend=backend,
+            primary_only=args.primary_only,
         )
-        print(candidates_json(candidates))
+        print(candidates_json(candidates, unique_experiments=args.unique_experiments))
         return
 
     if args.command == "fetch":
@@ -142,6 +153,7 @@ def main() -> None:
         report = tensorrt.benchmark_gpu_bundle(
             args.bundle,
             args.results,
+            args.dataset,
             warmup_ms=args.warmup_ms,
             iterations=args.iterations,
             throughput_streams=args.throughput_streams,

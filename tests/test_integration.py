@@ -44,7 +44,13 @@ class PipelineIntegrationTest(unittest.TestCase):
             )
             (experiment / "weights.url").write_text("weights.pt\n", encoding="utf-8")
             (experiment / "dataset.json").write_text(
-                json.dumps({"uri": "s3://datasets/validation", "include": ["samples"]}),
+                json.dumps(
+                    {
+                        "uri": "s3://datasets/validation",
+                        "include": ["samples"],
+                        "format": "cityscapes_segmentation_npz_v1",
+                    }
+                ),
                 encoding="utf-8",
             )
             (experiment / "metrics.json").write_text(
@@ -73,6 +79,7 @@ class PipelineIntegrationTest(unittest.TestCase):
                     {
                         "uri": "s3://datasets/validation",
                         "include": ["samples"],
+                        "format": "cityscapes_segmentation_npz_v1",
                         "object_count": 1,
                         "total_bytes": 3,
                         "listing_sha256": "a" * 64,

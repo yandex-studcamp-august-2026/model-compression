@@ -8,7 +8,9 @@ from pathlib import Path
 from model_bench.discovery import (
     Backend,
     candidate_from_directory,
+    candidates_json,
     discover,
+    discover_candidates,
     discover_changed,
     reject_mixed_infrastructure_candidate_change,
 )
@@ -26,6 +28,7 @@ def make_candidate(root: Path, name: str = "candidate", marker: str = "CPU") -> 
             {
                 "uri": "s3://datasets/cityscapes",
                 "include": ["images/val", "gtFine/val"],
+                "format": "cityscapes_segmentation_npz_v1",
             }
         ),
         encoding="utf-8",
@@ -80,13 +83,22 @@ class DiscoveryTest(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "must be empty"):
                 candidate_from_directory(directory)
 
-    def test_exactly_one_marker_is_required(self):
+    def test_candidate_can_target_cpu_and_gpu(self):
         with tempfile.TemporaryDirectory() as temp:
             directory = make_candidate(Path(temp))
             (directory / "GPU").write_bytes(b"")
 
-            with self.assertRaisesRegex(ValueError, "exactly one"):
-                candidate_from_directory(directory)
+            candidates = discover(directory.parent)
+
+            self.assertEqual(
+                [item.backend for item in candidates], [Backend.CPU, Backend.GPU]
+            )
+            serialized = json.loads(
+                candidates_json(candidates, unique_experiments=True)
+            )
+            self.assertEqual(len(serialized), 1)
+            self.assertEqual(serialized[0]["name"], "candidate")
+            self.assertNotIn("backend", serialized[0])
 
     def test_weights_url_is_required(self):
         with tempfile.TemporaryDirectory() as temp:
@@ -183,6 +195,19 @@ class DiscoveryTest(unittest.TestCase):
 
             self.assertEqual(len(candidates), 1)
             self.assertEqual(candidates[0].backend, Backend.GPU)
+
+    def test_primary_candidates_are_first_and_can_be_selected(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            make_candidate(root, "secondary")
+            primary = make_candidate(root, "primary")
+            (primary / "PRIMARY").write_bytes(b"")
+
+            candidates = discover(root / "experiments")
+            selected = discover_candidates(root / "experiments", primary_only=True)
+
+            self.assertEqual(candidates[0].name, "primary")
+            self.assertEqual([item.name for item in selected], ["primary"])
 
     def test_rejects_mixed_pipeline_and_candidate_pull_request(self):
         with tempfile.TemporaryDirectory() as temp:

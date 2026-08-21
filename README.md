@@ -1,109 +1,58 @@
 # Model benchmark pipeline
 
-Репозиторий хранит ML-эксперименты и запускает воспроизводимые benchmark:
-
-- `CPU` — ONNX Runtime на GitHub-hosted runner;
-- `GPU` — TensorRT FP32 и дополнительный FP16 на NVIDIA V100 в Yandex Cloud.
+Репозиторий хранит эксперименты и сравнивает качество, latency и throughput после
+конверсии PyTorch → ONNX Runtime / TensorRT.
 
 ## Эксперимент
 
-Для запуска создайте директорию:
-
 ```text
-experiments/<experiment_name>/
-├── forward.py
-├── weights.url
+experiments/<name>/
+├── forward.py          # модель, входы и evaluate_quality
+├── weights.url         # s3://.../checkpoints/<name>/checkpoint.pt
 ├── weights.sha256
-├── dataset.json
-├── metrics.json
+├── dataset.json        # validation subset в Object Storage
+├── metrics.json        # исходные метрики обучения
 ├── conclusion.md
-└── CPU
+├── CPU                 # запустить ONNX Runtime
+├── GPU                 # запустить TensorRT FP32 и дополнительный FP16
+└── PRIMARY             # включить в автоматический benchmark pull request
 ```
 
-Имя эксперимента должно быть в `snake_case`. Вместо `CPU` можно использовать
-`GPU`, но два маркера одновременно запрещены. Маркер — пустой файл.
+`CPU`, `GPU` и `PRIMARY` — пустые маркерные файлы. `CPU` и `GPU` можно использовать
+одновременно. Без `PRIMARY` эксперимент сохраняется в репозитории и запускается
+вручную через `Actions → Model benchmark → Run workflow`.
 
-`weights.url` содержит URI checkpoint:
+`forward.py` должен экспортировать batch-1 модель, `INPUT_SHAPE` и
+`evaluate_quality(predict, dataset_root)`. Checkpoint — чистый `state_dict`.
+Шаблоны входных файлов находятся в [`templates/experiment`](templates/experiment/).
 
-```text
-s3://<bucket>/checkpoints/<experiment_name>/checkpoint.pt
-```
+## Pipeline
 
-`weights.sha256` содержит lowercase SHA-256 checkpoint. Checkpoint должен быть
-чистым `state_dict`.
+Pull request в `main` для изменённых `PRIMARY`-экспериментов:
 
-`dataset.json` задаёт корень validation dataset в `datasets-studcamp` и только
-нужные подпапки. CI скачивает эти объекты и дважды вызывает объявленную в
-`forward.py` функцию `evaluate_quality(predict, dataset_root)`: для PyTorch и
-для ONNX Runtime. Конверсия отклоняется, если task-метрики расходятся сильнее
-`QUALITY_ATOL` (по умолчанию `1e-4`).
+1. проверяет структуру и SHA-256 checkpoint;
+2. считает исходное качество PyTorch на validation subset;
+3. экспортирует ONNX и проверяет численную и task-level parity;
+4. считает CPU benchmark для `CPU`;
+5. собирает TensorRT FP32 и дополнительный FP16, повторно проверяет качество и
+   считает GPU benchmark для `GPU`;
+6. сохраняет `report.json`, `latency_ms.csv` и `latency_histogram.svg` на 7 дней.
 
-`forward.py` объявляет ровно один `torch.nn.Module`. Его конструктор принимает
-`weights_path`, строго загружает checkpoint, а файл задаёт реальную batch-1 форму:
+FP32/FP16 performance публикуется только после успешной проверки качества.
+Результат принимается при `conversion_status=validated`, `quality.passed=true` и
+`status=completed`.
 
-```python
-INPUT_SHAPE = (1, 3, 512, 512)
-```
-
-Для нестандартных или нескольких входов задайте `make_inputs(seed)`,
-`INPUT_NAMES` и `INPUT_SHAPES`. Готовые шаблоны `metrics.json` находятся в
-[`templates/experiment`](templates/experiment/).
-
-## Что запускает CI
-
-Pull request в `main` с изменённым экспериментом выполняет:
-
-1. проверку структуры и SHA-256 checkpoint;
-2. экспорт PyTorch в ONNX;
-3. сравнение выходов и task-метрик PyTorch и ONNX Runtime;
-4. CPU- или GPU-benchmark в зависимости от маркера;
-5. публикацию отчёта, CSV и SVG-гистограммы на 7 дней.
-
-Начинайте с `CPU`. После успешного CPU PR создайте новую ветку от `main`, замените
-`CPU` на `GPU` и откройте отдельный PR. GPU job сам включает остановленную VM,
-собирает TensorRT FP32 и FP16 engines, выполняет проверки и останавливает VM.
-
-Изменение notebook не запускает benchmark. Ручной запуск доступен через
-`Actions → Model benchmark → Run workflow` с путём
-`experiments/<experiment_name>`.
-
-## Локальные команды
+## Локальная проверка
 
 Требуются Python 3.12 и `uv==0.11.32`.
 
 ```bash
 make install-dev
 make check
-make validate EXPERIMENT=experiments/<experiment_name>
+make validate EXPERIMENT=experiments/<name>
+make export EXPERIMENT=experiments/<name> \
+  DATASET=/path/to/dataset WEIGHTS=/path/to/checkpoint.pt
+make benchmark-cpu BUNDLE=bundles/<name>
+# На настроенной GPU VM:
+make benchmark-gpu BUNDLE=bundles/<name> DATASET=/path/to/dataset
 ```
-
-Экспорт с локальным checkpoint:
-
-```bash
-make export \
-  EXPERIMENT=experiments/<experiment_name> \
-  DATASET=/path/to/downloaded/validation-dataset \
-  WEIGHTS=/path/to/checkpoint.pt
-```
-
-CPU-benchmark готового bundle:
-
-```bash
-make benchmark \
-  EXPERIMENT=experiments/<experiment_name> \
-  BUNDLE=bundles/<experiment_name>
-```
-
-## Результат
-
-Artifact содержит:
-
-```text
-report.json
-latency_ms.csv
-latency_histogram.svg
-```
-
-Принимать результат можно только при `conversion_status=validated`,
-`quality.passed=true` и `status=completed`. В отчёте сохраняются качество до и
-после конверсии, latency p50/p90/p95/p99, throughput и SVG-гистограмма latency.

@@ -5,7 +5,7 @@ from pathlib import Path
 class WorkflowContractTest(unittest.TestCase):
     def test_gpu_artifacts_keep_one_directory_per_experiment(self):
         workflow = Path(".github/workflows/benchmark.yml").read_text(encoding="utf-8")
-        gpu_download = workflow.split("pattern: bundle-gpu-*", maxsplit=1)[1].split(
+        gpu_download = workflow.split("pattern: bundle-*", maxsplit=1)[1].split(
             "- name: Authenticate", maxsplit=1
         )[0]
 
@@ -19,6 +19,39 @@ class WorkflowContractTest(unittest.TestCase):
         self.assertIn("EXPECTED_GPU_MODEL: ${{ vars.EXPECTED_GPU_MODEL }}", workflow)
         self.assertIn("EXPECTED_GPU_MODEL is required", runner)
         self.assertIn('!= *"${EXPECTED_GPU_MODEL}"*', runner)
+
+    def test_gpu_job_transfers_bound_validation_dataset(self):
+        workflow = Path(".github/workflows/benchmark.yml").read_text(encoding="utf-8")
+        runner = Path("scripts/run_remote_gpu.sh").read_text(encoding="utf-8")
+
+        gpu_job = workflow.split("benchmark-gpu:", maxsplit=1)[1].split(
+            "gpu-disabled:", maxsplit=1
+        )[0]
+        self.assertIn(
+            "name: dataset-${{ fromJSON(needs.discover.outputs.gpu)[0].name }}",
+            gpu_job,
+        )
+        self.assertIn("run_remote_gpu.sh bundles results trusted dataset", gpu_job)
+        self.assertIn('tar -C "${dataset_dir}" -cf - .', runner)
+        self.assertIn('--dataset "${REMOTE_DIR}/dataset"', runner)
+
+    def test_pull_requests_benchmark_only_primary_candidates(self):
+        workflow = Path(".github/workflows/benchmark.yml").read_text(encoding="utf-8")
+
+        self.assertIn(
+            'selection=(--base "${BASE_SHA}" --head "${SOURCE_SHA}" --primary-only)',
+            workflow,
+        )
+        self.assertIn('"${selection[@]}" --unique-experiments', workflow)
+        self.assertIn("name: checkpoint-${{ matrix.candidate.name }}", workflow)
+        self.assertIn("name: dataset-${{ matrix.candidate.name }}", workflow)
+
+    def test_onnx_bundle_is_exported_once_and_shared_by_cpu_and_gpu(self):
+        workflow = Path(".github/workflows/benchmark.yml").read_text(encoding="utf-8")
+
+        self.assertNotIn("bundle-cpu-", workflow)
+        self.assertNotIn("bundle-gpu-", workflow)
+        self.assertIn("name: bundle-${{ matrix.candidate.name }}", workflow)
 
     def test_v100_preflight_uses_supported_trtexec_probe(self):
         runner = Path("scripts/run_remote_gpu.sh").read_text(encoding="utf-8")

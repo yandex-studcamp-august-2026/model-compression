@@ -13,7 +13,8 @@ EXPERIMENT_NAME = re.compile(r"^[a-z][a-z0-9_]*$")
 TENSOR_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_.-]*$")
 MAX_METADATA_BYTES = 1_000_000
 MAX_INPUT_ELEMENTS = 100_000_000
-SUPPORTED_SCHEMA_VERSION = 4
+SUPPORTED_SCHEMA_VERSION = 6
+SUPPORTED_DATASET_FORMATS = {"cityscapes_segmentation_npz_v1"}
 RAW_DTYPE_SIZES = {
     "bool": 1,
     "float16": 2,
@@ -53,11 +54,18 @@ def load_bundle(
     experiment = bundle.get("experiment")
     if not isinstance(experiment, str) or EXPERIMENT_NAME.fullmatch(experiment) is None:
         raise ValueError("Invalid experiment name in bundle")
-    backend = bundle.get("backend")
-    if backend not in {"cpu", "gpu"}:
-        raise ValueError("Invalid backend in bundle")
-    if expected_backend is not None and backend != expected_backend:
-        raise ValueError(f"Expected {expected_backend} bundle, got {backend}")
+    backends = bundle.get("backends")
+    if (
+        not isinstance(backends, list)
+        or not backends
+        or len(backends) != len(set(backends))
+        or any(backend not in {"cpu", "gpu"} for backend in backends)
+    ):
+        raise ValueError("Invalid backends in bundle")
+    if expected_backend is not None and expected_backend not in backends:
+        raise ValueError(
+            f"Bundle does not target {expected_backend}; targets: {', '.join(backends)}"
+        )
 
     names = _tensor_names(bundle.get("input_names"), "input_names")
     outputs = _tensor_names(bundle.get("output_names"), "output_names")
@@ -154,6 +162,7 @@ def _validate_conversion_quality(value: Any, training_metrics: dict[str, Any]) -
     if (
         not isinstance(dataset.get("uri"), str)
         or not isinstance(dataset.get("include"), list)
+        or dataset.get("format") not in SUPPORTED_DATASET_FORMATS
         or type(dataset.get("object_count")) is not int
         or dataset["object_count"] <= 0
         or type(dataset.get("total_bytes")) is not int
@@ -219,8 +228,13 @@ def load_parity_manifest(parity_dir: Path, bundle: dict[str, Any]) -> dict[str, 
             raise ValueError("Semantic output does not match bundle outputs")
         if type(semantic.get("class_axis")) is not int:
             raise ValueError("Segmentation class_axis must be an integer")
-        if semantic.get("require_exact_label_map") is not True:
-            raise ValueError("Segmentation must require exact label-map parity")
+        minimum_agreement = semantic.get("minimum_pixel_agreement")
+        if (
+            isinstance(minimum_agreement, bool)
+            or not isinstance(minimum_agreement, (int, float))
+            or not math.isclose(float(minimum_agreement), 0.9999)
+        ):
+            raise ValueError("Invalid segmentation label-map agreement policy")
     return manifest
 
 

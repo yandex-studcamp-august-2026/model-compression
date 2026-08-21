@@ -16,8 +16,16 @@ class Backend(StrEnum):
 
 
 MARKERS = {"CPU": Backend.CPU, "GPU": Backend.GPU}
+PRIMARY_MARKER = "PRIMARY"
 TRIGGER_FILES = frozenset(
-    {*MARKERS, "forward.py", "weights.url", "weights.sha256", "dataset.json"}
+    {
+        *MARKERS,
+        PRIMARY_MARKER,
+        "forward.py",
+        "weights.url",
+        "weights.sha256",
+        "dataset.json",
+    }
 )
 EXPERIMENT_NAME = re.compile(r"^[a-z][a-z0-9_]*$")
 INFRASTRUCTURE_FILES = frozenset(
@@ -37,6 +45,7 @@ class Candidate:
     dataset: Path
     metrics: Path
     conclusion: Path
+    primary: bool
 
     @property
     def name(self) -> str:
@@ -50,27 +59,28 @@ class Candidate:
         }
 
 
-def candidate_from_directory(directory: Path) -> Candidate | None:
+def candidates_from_directory(directory: Path) -> list[Candidate]:
     markers = [directory / name for name in MARKERS if (directory / name).is_file()]
     if not markers:
-        return None
-    if len(markers) != 1:
-        raise ValueError(
-            f"Candidate {directory} must contain exactly one of CPU or GPU"
-        )
-    marker = markers[0]
-    if marker.read_bytes():
-        raise ValueError(f"Backend marker must be empty: {marker}")
+        return []
+    for marker in markers:
+        if marker.read_bytes():
+            raise ValueError(f"Backend marker must be empty: {marker}")
+    primary_marker = directory / PRIMARY_MARKER
+    if primary_marker.exists() and (
+        not primary_marker.is_file() or primary_marker.read_bytes()
+    ):
+        raise ValueError(f"Primary marker must be an empty file: {primary_marker}")
     if EXPERIMENT_NAME.fullmatch(directory.name) is None:
         raise ValueError(f"Experiment directory must use snake_case: {directory.name}")
     forward = directory / "forward.py"
     if not forward.is_file():
-        raise ValueError(f"Candidate {directory} has {marker.name} but no forward.py")
+        raise ValueError(
+            f"Candidate {directory} has a backend marker but no forward.py"
+        )
     weights_url = directory / "weights.url"
     if not weights_url.is_file() or not weights_url.read_text(encoding="utf-8").strip():
-        raise ValueError(
-            f"Candidate {directory} has {marker.name} but no non-empty weights.url"
-        )
+        raise ValueError(f"Candidate {directory} has no non-empty weights.url")
     weights_sha256 = directory / "weights.sha256"
     if (
         not weights_sha256.is_file()
@@ -90,8 +100,8 @@ def candidate_from_directory(directory: Path) -> Candidate | None:
         raise ValueError("dataset.json must contain valid JSON") from exc
     if not isinstance(dataset_value, dict):
         raise ValueError("dataset.json must contain a JSON object")
-    if set(dataset_value) != {"uri", "include"}:
-        raise ValueError("dataset.json must contain exactly uri and include")
+    if set(dataset_value) != {"uri", "include", "format"}:
+        raise ValueError("dataset.json must contain exactly uri, include, and format")
     if not isinstance(dataset_value["uri"], str) or not dataset_value["uri"].startswith(
         "s3://"
     ):
@@ -103,20 +113,42 @@ def candidate_from_directory(directory: Path) -> Candidate | None:
         or any(not isinstance(value, str) or not value.strip() for value in includes)
     ):
         raise ValueError("dataset.json include must be a non-empty string list")
+    if dataset_value["format"] != "cityscapes_segmentation_npz_v1":
+        raise ValueError("dataset.json contains an unsupported format")
     metrics = directory / "metrics.json"
     conclusion = directory / "conclusion.md"
     load_metrics(metrics, directory.name)
     validate_conclusion(conclusion)
-    return Candidate(
-        directory,
-        marker,
-        MARKERS[marker.name],
-        forward,
-        weights_url,
-        weights_sha256,
-        dataset,
-        metrics,
-        conclusion,
+    return [
+        Candidate(
+            directory,
+            marker,
+            MARKERS[marker.name],
+            forward,
+            weights_url,
+            weights_sha256,
+            dataset,
+            metrics,
+            conclusion,
+            primary_marker.is_file(),
+        )
+        for marker in markers
+    ]
+
+
+def candidate_from_directory(
+    directory: Path, backend: Backend | None = None
+) -> Candidate | None:
+    candidates = candidates_from_directory(directory)
+    if backend is not None:
+        candidates = [item for item in candidates if item.backend is backend]
+    return candidates[0] if candidates else None
+
+
+def _ordered(candidates: list[Candidate]) -> list[Candidate]:
+    return sorted(
+        candidates,
+        key=lambda item: (not item.primary, item.name, item.backend.value),
     )
 
 
@@ -128,10 +160,8 @@ def discover(root: Path) -> list[Candidate]:
         marker.parent for name in MARKERS for marker in root.glob(f"*/{name}")
     }
     for directory in sorted(directories):
-        candidate = candidate_from_directory(directory)
-        if candidate is not None:
-            candidates.append(candidate)
-    return candidates
+        candidates.extend(candidates_from_directory(directory))
+    return _ordered(candidates)
 
 
 def changed_files(base: str, head: str) -> list[Path]:
@@ -155,10 +185,8 @@ def discover_changed(root: Path, base: str, head: str) -> list[Candidate]:
     }
     candidates = []
     for directory in sorted(directories):
-        candidate = candidate_from_directory(directory)
-        if candidate is not None:
-            candidates.append(candidate)
-    return candidates
+        candidates.extend(candidates_from_directory(directory))
+    return _ordered(candidates)
 
 
 def reject_mixed_infrastructure_candidate_change(
@@ -179,11 +207,25 @@ def reject_mixed_infrastructure_candidate_change(
         )
 
 
-def candidates_json(candidates: list[Candidate], backend: Backend | None = None) -> str:
+def candidates_json(
+    candidates: list[Candidate],
+    backend: Backend | None = None,
+    *,
+    unique_experiments: bool = False,
+) -> str:
     selected = [
         item for item in candidates if backend is None or item.backend is backend
     ]
-    return json.dumps([item.as_dict() for item in selected], ensure_ascii=False)
+    if unique_experiments:
+        unique: dict[str, Candidate] = {}
+        for item in selected:
+            unique.setdefault(item.name, item)
+        selected = list(unique.values())
+    values = [item.as_dict() for item in selected]
+    if unique_experiments:
+        for value in values:
+            value.pop("backend")
+    return json.dumps(values, ensure_ascii=False)
 
 
 def discover_candidates(
@@ -193,14 +235,19 @@ def discover_candidates(
     head: str | None = None,
     explicit: Path | None = None,
     backend: Backend | None = None,
+    primary_only: bool = False,
 ) -> list[Candidate]:
     if explicit is not None:
-        candidate = candidate_from_directory(explicit)
-        candidates = [candidate] if candidate is not None else []
+        candidates = candidates_from_directory(explicit)
     elif base is not None or head is not None:
         if base is None or head is None:
             raise ValueError("--base and --head must be provided together")
         candidates = discover_changed(root, base, head)
     else:
         candidates = discover(root)
-    return [item for item in candidates if backend is None or item.backend is backend]
+    return [
+        item
+        for item in candidates
+        if (backend is None or item.backend is backend)
+        and (not primary_only or item.primary)
+    ]

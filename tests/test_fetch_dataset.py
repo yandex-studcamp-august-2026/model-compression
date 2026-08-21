@@ -54,6 +54,7 @@ class DatasetFetchTest(unittest.TestCase):
                     {
                         "uri": "s3://datasets/cityscapes/Cityspaces",
                         "include": ["images/val", "gtFine/val"],
+                        "format": "cityscapes_segmentation_npz_v1",
                     }
                 ),
                 encoding="utf-8",
@@ -68,6 +69,7 @@ class DatasetFetchTest(unittest.TestCase):
                         "datasets",
                         "cityscapes/Cityspaces",
                         ["images/val", "gtFine/val"],
+                        "cityscapes_segmentation_npz_v1",
                     ),
                 )
 
@@ -79,6 +81,7 @@ class DatasetFetchTest(unittest.TestCase):
                     {
                         "uri": "s3://datasets/cityscapes",
                         "include": ["../private"],
+                        "format": "cityscapes_segmentation_npz_v1",
                     }
                 ),
                 encoding="utf-8",
@@ -104,6 +107,7 @@ class DatasetFetchTest(unittest.TestCase):
                 "datasets",
                 "city",
                 ["images/val", "gtFine/val"],
+                "cityscapes_segmentation_npz_v1",
                 output,
             )
 
@@ -111,6 +115,7 @@ class DatasetFetchTest(unittest.TestCase):
             self.assertEqual((output / "gtFine/val/a.png").read_bytes(), b"mask")
             self.assertEqual(manifest["object_count"], 2)
             self.assertEqual(manifest["total_bytes"], 9)
+            self.assertEqual(manifest["format"], "cityscapes_segmentation_npz_v1")
             self.assertRegex(manifest["listing_sha256"], r"^[0-9a-f]{64}$")
 
 

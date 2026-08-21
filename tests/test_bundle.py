@@ -22,6 +22,7 @@ def conversion_quality() -> dict:
         "dataset": {
             "uri": "s3://datasets/validation",
             "include": ["samples"],
+            "format": "cityscapes_segmentation_npz_v1",
             "object_count": 1,
             "total_bytes": 1,
             "listing_sha256": "a" * 64,
@@ -39,9 +40,9 @@ class BundleValidationTest(unittest.TestCase):
             quality["post_conversion_metrics"]["mIoU"] = 0.5
             quality["absolute_deltas"]["mIoU"] = 0.1
             metadata = {
-                "schema_version": 4,
+                "schema_version": 6,
                 "experiment": "quality_regression",
-                "backend": "cpu",
+                "backends": ["cpu"],
                 "input_names": ["pixels"],
                 "input_shapes": [[1, 3, 32, 32]],
                 "output_names": ["logits"],
@@ -62,9 +63,9 @@ class BundleValidationTest(unittest.TestCase):
             (root / "model.onnx").write_bytes(b"model")
             (root / "benchmark_inputs.npz").write_bytes(b"inputs")
             metadata = {
-                "schema_version": 4,
+                "schema_version": 6,
                 "experiment": "../escape",
-                "backend": "cpu",
+                "backends": ["cpu"],
                 "input_names": ["pixels"],
                 "input_shapes": [[1, 3, 32, 32]],
                 "output_names": ["logits"],
@@ -92,9 +93,9 @@ class BundleValidationTest(unittest.TestCase):
             (root / "model.onnx.data").write_bytes(b"weights")
             (root / "benchmark_inputs.npz").write_bytes(b"inputs")
             metadata = {
-                "schema_version": 4,
+                "schema_version": 6,
                 "experiment": "safe_model",
-                "backend": "gpu",
+                "backends": ["gpu"],
                 "input_names": ["pixels"],
                 "input_shapes": [[1, 3, 32, 32]],
                 "output_names": ["logits"],
@@ -147,7 +148,7 @@ class BundleValidationTest(unittest.TestCase):
                     "task": "segmentation",
                     "output_name": "logits",
                     "class_axis": 1,
-                    "require_exact_label_map": True,
+                    "minimum_pixel_agreement": 0.9999,
                 },
             }
             (root / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
@@ -190,7 +191,7 @@ class BundleValidationTest(unittest.TestCase):
                     "task": "depth",
                     "output_name": None,
                     "class_axis": None,
-                    "require_exact_label_map": False,
+                    "minimum_pixel_agreement": None,
                 },
             }
             (root / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
