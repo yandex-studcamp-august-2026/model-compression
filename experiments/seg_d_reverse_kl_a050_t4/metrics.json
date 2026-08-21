@@ -1,0 +1,13 @@
+{
+  "experiment_name": "seg_d_reverse_kl_a050_t4",
+  "author": "misha",
+  "hypothesis": "reverse KL will improve mIoU relative to the CE-only SegFormer-B0 baseline.",
+  "task": "segmentation",
+  "recipe": "soft_label_reverse_kl",
+  "metrics": {
+    "mIoU": 0.7088216543197632
+  },
+  "baseline_metrics": {
+    "mIoU": 0.7173574566841125
+  }
+}

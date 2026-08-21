@@ -1,0 +1,13 @@
+{
+  "experiment_name": "seg_c_js_a010_t100_c070",
+  "author": "misha",
+  "hypothesis": "teacher confidence threshold=0.7 will improve mIoU relative to the CE-only SegFormer-B0 baseline.",
+  "task": "segmentation",
+  "recipe": "confidence_weighted_kd",
+  "metrics": {
+    "mIoU": 0.717412531375885
+  },
+  "baseline_metrics": {
+    "mIoU": 0.7173574566841125
+  }
+}

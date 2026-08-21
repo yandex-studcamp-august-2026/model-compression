@@ -1,0 +1,13 @@
+{
+  "experiment_name": "seg_d_symmetric_kl_a050_t4",
+  "author": "misha",
+  "hypothesis": "symmetric KL will improve mIoU relative to the CE-only SegFormer-B0 baseline.",
+  "task": "segmentation",
+  "recipe": "soft_label_symmetric_kl",
+  "metrics": {
+    "mIoU": 0.7104969024658203
+  },
+  "baseline_metrics": {
+    "mIoU": 0.7173574566841125
+  }
+}

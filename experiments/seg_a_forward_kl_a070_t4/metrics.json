@@ -1,0 +1,13 @@
+{
+  "experiment_name": "seg_a_forward_kl_a070_t4",
+  "author": "misha",
+  "hypothesis": "alpha=0.7 will improve mIoU relative to the CE-only SegFormer-B0 baseline.",
+  "task": "segmentation",
+  "recipe": "soft_label_forward_kl",
+  "metrics": {
+    "mIoU": 0.7098196148872375
+  },
+  "baseline_metrics": {
+    "mIoU": 0.7173574566841125
+  }
+}

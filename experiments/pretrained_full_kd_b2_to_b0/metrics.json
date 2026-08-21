@@ -1,0 +1,13 @@
+{
+  "experiment_name": "pretrained_full_kd_b2_to_b0",
+  "author": "studcamp",
+  "hypothesis": "Logits-KD от Cityscapes SegFormer-B2 сократит разрыв B0 с учителем относительно baseline.",
+  "task": "segmentation",
+  "recipe": "full_kd",
+  "metrics": {
+    "mIoU": 0.7297593909707554
+  },
+  "baseline_metrics": {
+    "mIoU": 0.7276427182009326
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "experiment_name": "seg_baseline",
+  "author": "misha",
+  "hypothesis": "CE-only training establishes the student baseline without KD.",
+  "task": "segmentation",
+  "recipe": "ce_only",
+  "metrics": {
+    "mIoU": 0.7173574566841125
+  },
+  "baseline_metrics": {
+    "mIoU": 0.7173574566841125
+  }
+}

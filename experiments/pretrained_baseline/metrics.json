@@ -1,0 +1,13 @@
+{
+  "experiment_name": "pretrained_baseline",
+  "author": "studcamp",
+  "hypothesis": "Готовый Cityscapes SegFormer-B0 задаёт исходную точку сравнения без дополнительного обучения.",
+  "task": "segmentation",
+  "recipe": "baseline",
+  "metrics": {
+    "mIoU": 0.7276427182009326
+  },
+  "baseline_metrics": {
+    "mIoU": 0.7276427182009326
+  }
+}
