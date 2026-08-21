@@ -68,9 +68,11 @@ class WorkflowContractTest(unittest.TestCase):
 
     def test_v100_preflight_uses_supported_trtexec_probe(self):
         runner = Path("scripts/run_remote_gpu.sh").read_text(encoding="utf-8")
+        gpu_runtime = Path("src/model_bench/tensorrt.py").read_text(encoding="utf-8")
 
         self.assertIn("trtexec --help", runner)
         self.assertNotIn("trtexec --version", runner)
+        self.assertNotIn("from datetime import UTC", gpu_runtime)
 
     def test_gpu_private_key_is_normalized_and_validated(self):
         workflow = Path(".github/workflows/benchmark.yml").read_text(encoding="utf-8")

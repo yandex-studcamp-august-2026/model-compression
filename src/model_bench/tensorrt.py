@@ -6,7 +6,7 @@ import platform
 import re
 import shutil
 import subprocess
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -25,6 +25,8 @@ from model_bench.validation import (
     compare_raw_tensors,
     compare_segmentation_raw_tensors,
 )
+
+UTC_TIMEZONE = timezone.utc  # noqa: UP017 -- the GPU runtime uses Python 3.10
 
 GPU_QUERY_FIELDS = ",".join(
     (
@@ -570,7 +572,7 @@ def benchmark_gpu_bundle(
         "schema_version": 2,
         "experiment": bundle["experiment"],
         "git_sha": bundle.get("git_sha"),
-        "created_at": datetime.now(UTC).isoformat(),
+        "created_at": datetime.now(UTC_TIMEZONE).isoformat(),
         "backend": "tensorrt",
         "status": "initializing",
         "conversion_status": "unavailable",
