@@ -72,6 +72,16 @@ class WorkflowContractTest(unittest.TestCase):
         self.assertIn("trtexec --help", runner)
         self.assertNotIn("trtexec --version", runner)
 
+    def test_gpu_private_key_is_normalized_and_validated(self):
+        workflow = Path(".github/workflows/benchmark.yml").read_text(encoding="utf-8")
+        prepare_key = workflow.split("- name: Prepare SSH key", maxsplit=1)[1].split(
+            "- name: Run TensorRT benchmark", maxsplit=1
+        )[0]
+
+        self.assertIn("printf '%s\\n'", prepare_key)
+        self.assertIn("sed 's/\\r$//'", prepare_key)
+        self.assertIn("ssh-keygen -y -P ''", prepare_key)
+
     def test_s3_job_uses_frozen_lock(self):
         workflow = Path(".github/workflows/benchmark.yml").read_text(encoding="utf-8")
         fetch_job = workflow.split("fetch-inputs:", maxsplit=1)[1].split(

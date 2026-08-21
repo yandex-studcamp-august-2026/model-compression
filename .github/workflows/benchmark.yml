@@ -309,7 +309,9 @@ jobs:
           GPU_SSH_PRIVATE_KEY: ${{ secrets.GPU_SSH_PRIVATE_KEY }}
         run: |
           install -m 600 /dev/null "${RUNNER_TEMP}/gpu-ssh-key"
-          printf '%s' "${GPU_SSH_PRIVATE_KEY}" >"${RUNNER_TEMP}/gpu-ssh-key"
+          printf '%s\n' "${GPU_SSH_PRIVATE_KEY}" |
+            sed 's/\r$//' >"${RUNNER_TEMP}/gpu-ssh-key"
+          ssh-keygen -y -P '' -f "${RUNNER_TEMP}/gpu-ssh-key" >/dev/null
       - name: Run TensorRT benchmark on V100
         env:
           GPU_SSH_KEY_FILE: ${{ runner.temp }}/gpu-ssh-key
