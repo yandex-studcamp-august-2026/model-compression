@@ -29,6 +29,34 @@ class TrustedFetchTest(unittest.TestCase):
                 FETCH.validated_url_file(root, Path("experiments/model")), url.resolve()
             )
 
+    def test_accepts_candidate_with_cpu_and_gpu_markers(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            directory = root / "experiments/model"
+            directory.mkdir(parents=True)
+            (directory / "CPU").write_bytes(b"")
+            (directory / "GPU").write_bytes(b"")
+            url = directory / "weights.url"
+            url.write_text("s3://models/checkpoint.pt\n", encoding="utf-8")
+            (directory / "weights.sha256").write_text("a" * 64 + "\n", encoding="ascii")
+
+            self.assertEqual(
+                FETCH.validated_url_file(root, Path("experiments/model")), url.resolve()
+            )
+
+    def test_rejects_candidate_without_backend_marker(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            directory = root / "experiments/model"
+            directory.mkdir(parents=True)
+            (directory / "weights.url").write_text(
+                "s3://models/checkpoint.pt\n", encoding="utf-8"
+            )
+            (directory / "weights.sha256").write_text("a" * 64 + "\n", encoding="ascii")
+
+            with self.assertRaisesRegex(ValueError, "at least one empty"):
+                FETCH.validated_url_file(root, Path("experiments/model"))
+
     def test_validates_expected_checksum(self):
         with tempfile.TemporaryDirectory() as temp:
             checksum = Path(temp) / "weights.sha256"

@@ -38,8 +38,8 @@ def validated_url_file(source_root: Path, experiment_dir: Path) -> Path:
     markers = [
         path for path in (directory / "CPU", directory / "GPU") if path.is_file()
     ]
-    if len(markers) != 1 or markers[0].read_bytes():
-        raise ValueError("candidate must contain exactly one empty CPU or GPU marker")
+    if not markers or any(marker.read_bytes() for marker in markers):
+        raise ValueError("candidate must contain at least one empty CPU or GPU marker")
     url_file = directory / "weights.url"
     if not url_file.is_file():
         raise ValueError(f"missing {url_file}")
